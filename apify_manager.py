@@ -37,7 +37,15 @@ class ApifyManager:
 
     async def wait_for_run(self, run_id: str, timeout_secs: int = 1800):
         """Wait until the run finishes"""
-        run = await self.client.run(run_id).wait_for_finish(wait_secs=timeout_secs)
+        from datetime import timedelta
+        # Newer apify-client uses wait_duration (timedelta), older used wait_secs
+        try:
+            run = await self.client.run(run_id).wait_for_finish(
+                wait_duration=timedelta(seconds=timeout_secs)
+            )
+        except TypeError:
+            # Fallback for older client versions
+            run = await self.client.run(run_id).wait_for_finish(wait_secs=timeout_secs)
         return run
 
     async def get_run_info(self, run_id: str):
