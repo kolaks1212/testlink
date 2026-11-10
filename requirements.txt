@@ -1,13 +1,4 @@
 python-telegram-bot==21.6
 requests==2.32.3
-curl-cffi>=0.7.0
-
-# روش ۳
-cloudscraper25>=2.5.0
-
-# روش ۴ (بدون FlareSolverr هم کار می‌کند، فقط مسیر curl_cffi)
-unblock-requests>=0.3.0
-
-# روش ۵ و ۶ (نیاز به Chromium)
-nodriver>=0.38
-cloudflare-skip>=1.0.0
+cf-killer>=0.1.0
+cloakbrowser
