@@ -15,4 +15,4 @@ COPY . .
 # Create temp directory
 RUN mkdir -p /tmp/bot_downloads
 
-CMD ["python", "bot.py"]
+CMD ["python", "main.py"]

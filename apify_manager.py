@@ -30,7 +30,9 @@ class ApifyManager:
         }
 
         run = await self.client.actor(ACTOR_ID).start(run_input=run_input)
-        logger.info(f"Started Actor run: {run['id']}")
+        # In newer apify-client versions, start() returns a Run object (not dict)
+        run_id = getattr(run, "id", None) or (run.get("id") if isinstance(run, dict) else None)
+        logger.info(f"Started Actor run: {run_id}")
         return run
 
     async def wait_for_run(self, run_id: str, timeout_secs: int = 1800):
@@ -55,30 +57,34 @@ class ApifyManager:
             for key in possible_keys:
                 try:
                     record = await self.client.key_value_store(store_id).get_record(key)
-                    if record and record.get("value"):
-                        content = record["value"]
-                        # If it's bytes
-                        if isinstance(content, bytes):
-                            async with aiofiles.open(local_path, "wb") as f:
-                                await f.write(content)
-                            logger.info(f"Downloaded ZIP from key: {key}")
-                            return local_path
+                    if record is None:
+                        continue
+                    # Support both dict and object
+                    content = getattr(record, "value", None) or (record.get("value") if isinstance(record, dict) else None)
+                    if content and isinstance(content, (bytes, bytearray)):
+                        async with aiofiles.open(local_path, "wb") as f:
+                            await f.write(content)
+                        logger.info(f"Downloaded ZIP from key: {key}")
+                        return local_path
                 except Exception:
                     continue
 
             # Fallback: list all keys and look for .zip
-            keys = await self.client.key_value_store(store_id).list_keys()
-            for item in keys.get("items", []):
-                key = item.get("key", "")
+            keys_result = await self.client.key_value_store(store_id).list_keys()
+            items = getattr(keys_result, "items", None) or (keys_result.get("items") if isinstance(keys_result, dict) else []) or []
+            for item in items:
+                key = getattr(item, "key", None) or (item.get("key") if isinstance(item, dict) else "") or ""
                 if key.lower().endswith(".zip"):
                     record = await self.client.key_value_store(store_id).get_record(key)
-                    if record and record.get("value"):
-                        content = record["value"]
-                        if isinstance(content, bytes):
-                            async with aiofiles.open(local_path, "wb") as f:
-                                await f.write(content)
-                            logger.info(f"Downloaded ZIP from key: {key}")
-                            return local_path
+                    if record is None:
+                        continue
+                    # Support both dict and object
+                    content = getattr(record, "value", None) or (record.get("value") if isinstance(record, dict) else None)
+                    if content and isinstance(content, (bytes, bytearray)):
+                        async with aiofiles.open(local_path, "wb") as f:
+                            await f.write(content)
+                        logger.info(f"Downloaded ZIP from key: {key}")
+                        return local_path
 
             logger.warning("No ZIP file found in Key-Value Store")
             return None
