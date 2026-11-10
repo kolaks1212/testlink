@@ -2,7 +2,6 @@ import asyncio
 import logging
 from apify_client import ApifyClientAsync
 from config import APIFY_TOKEN, ACTOR_ID
-import aiohttp
 import aiofiles
 import os
 
@@ -59,40 +58,61 @@ class ApifyManager:
         Returns the local file path if successful, otherwise None.
         """
         try:
-            # Common keys used by this Actor
-            possible_keys = ["OUTPUT.zip", "output.zip", "download.zip", "files.zip"]
+            # 1) First try common key names
+            possible_keys = [
+                "OUTPUT.zip", "output.zip", "download.zip", "files.zip",
+                "archive.zip", "result.zip", "OUTPUT", "output",
+            ]
 
             for key in possible_keys:
                 try:
                     record = await self.client.key_value_store(store_id).get_record(key)
                     if record is None:
                         continue
-                    # Support both dict and object
-                    content = getattr(record, "value", None) or (record.get("value") if isinstance(record, dict) else None)
-                    if content and isinstance(content, (bytes, bytearray)):
+                    content = getattr(record, "value", None) or (
+                        record.get("value") if isinstance(record, dict) else None
+                    )
+                    if content and isinstance(content, (bytes, bytearray)) and len(content) > 100:
                         async with aiofiles.open(local_path, "wb") as f:
                             await f.write(content)
-                        logger.info(f"Downloaded ZIP from key: {key}")
+                        logger.info(f"Downloaded ZIP from key: {key} ({len(content)} bytes)")
                         return local_path
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Key {key} failed: {e}")
                     continue
 
-            # Fallback: list all keys and look for .zip
+            # 2) List all keys and look for anything that looks like a ZIP
             keys_result = await self.client.key_value_store(store_id).list_keys()
-            items = getattr(keys_result, "items", None) or (keys_result.get("items") if isinstance(keys_result, dict) else []) or []
+            items = (
+                getattr(keys_result, "items", None)
+                or (keys_result.get("items") if isinstance(keys_result, dict) else [])
+                or []
+            )
+
             for item in items:
                 key = getattr(item, "key", None) or (item.get("key") if isinstance(item, dict) else "") or ""
-                if key.lower().endswith(".zip"):
-                    record = await self.client.key_value_store(store_id).get_record(key)
-                    if record is None:
+                size = getattr(item, "size", None) or (item.get("size") if isinstance(item, dict) else 0) or 0
+
+                if not key:
+                    continue
+
+                # Prefer keys ending with .zip or large binary records
+                if key.lower().endswith(".zip") or size > 500:
+                    try:
+                        record = await self.client.key_value_store(store_id).get_record(key)
+                        if record is None:
+                            continue
+                        content = getattr(record, "value", None) or (
+                            record.get("value") if isinstance(record, dict) else None
+                        )
+                        if content and isinstance(content, (bytes, bytearray)) and len(content) > 100:
+                            async with aiofiles.open(local_path, "wb") as f:
+                                await f.write(content)
+                            logger.info(f"Downloaded from key: {key} ({len(content)} bytes)")
+                            return local_path
+                    except Exception as e:
+                        logger.debug(f"Failed to get key {key}: {e}")
                         continue
-                    # Support both dict and object
-                    content = getattr(record, "value", None) or (record.get("value") if isinstance(record, dict) else None)
-                    if content and isinstance(content, (bytes, bytearray)):
-                        async with aiofiles.open(local_path, "wb") as f:
-                            await f.write(content)
-                        logger.info(f"Downloaded ZIP from key: {key}")
-                        return local_path
 
             logger.warning("No ZIP file found in Key-Value Store")
             return None
@@ -105,11 +125,15 @@ class ApifyManager:
         """Get a summary of downloaded files from the dataset"""
         items = []
         async for item in self.client.dataset(dataset_id).iterate_items():
+            # Normalize to dict
+            if not isinstance(item, dict):
+                try:
+                    item = dict(item)
+                except Exception:
+                    item = getattr(item, "__dict__", {}) or {}
             items.append(item)
-    
-        def is_success(i):
-            if not isinstance(i, dict):
-                i = dict(i) if hasattr(i, "__dict__") else {}
+
+        def is_success(i: dict) -> bool:
             status = str(i.get("status") or i.get("state") or "").lower()
             if status in ("success", "succeeded", "ok", "downloaded"):
                 return True
@@ -121,15 +145,13 @@ class ApifyManager:
             if (i.get("size") or i.get("fileSize") or i.get("path") or i.get("filename")) and not i.get("error"):
                 return True
             return False
-    
+
         success = [i for i in items if is_success(i)]
-        failed = [i for i in items if i not in success]
-    
+        failed = [i for i in items if not is_success(i)]
+
         # Extract short failure reasons for user
         reasons = []
         for i in failed[:5]:
-            if not isinstance(i, dict):
-                continue
             reason = (
                 i.get("error")
                 or i.get("errorMessage")
@@ -138,9 +160,9 @@ class ApifyManager:
                 or i.get("status")
                 or "unknown"
             )
-            url = i.get("url") or i.get("sourceUrl") or i.get("input") or ""
-            reasons.append(f"• {url[:60]} → {reason}")
-    
+            url = i.get("url") or i.get("sourceUrl") or i.get("input") or i.get("source") or ""
+            reasons.append(f"• {str(url)[:60]} → {reason}")
+
         return {
             "total": len(items),
             "success": len(success),

@@ -244,6 +244,11 @@ async def monitor_and_send(
         else:
             # No ZIP found – send summary instead
             summary = await apify.get_dataset_summary(dataset_id)
+
+            reasons_text = ""
+            if summary.get("reasons"):
+                reasons_text = "\n\nعلت خطاها:\n" + "\n".join(summary["reasons"])
+
             await context.bot.edit_message_text(
                 chat_id=user_id,
                 message_id=message_id,
@@ -252,7 +257,8 @@ async def monitor_and_send(
                     f"📊 خلاصه:\n"
                     f"• کل: {summary['total']}\n"
                     f"• موفق: {summary['success']}\n"
-                    f"• ناموفق: {summary['failed']}\n\n"
+                    f"• ناموفق: {summary['failed']}"
+                    f"{reasons_text}\n\n"
                     f"🆔 Run ID: `{run_id}`\n"
                     f"📦 Dataset: `{dataset_id}`\n"
                     f"🗂 Store: `{store_id}`"
