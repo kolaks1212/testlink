@@ -17,10 +17,10 @@ from telegram.ext import (
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = "8758704422:AAGTexKCiwc1ASoolDYb39NFBTEgWMbo9ZM"
-MAX_FILE_SIZE = 45 * 1024 * 1024  # ۴۵ مگابایت
+MAX_FILE_SIZE = 45 * 1024 * 1024
 
-user_files = {}      # user_id -> {path, filename, method}
-pending_urls = {}    # user_id -> url
+user_files = {}
+pending_urls = {}
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -28,189 +28,206 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ==================== ایمپورت پکیج‌های دانلود (اختیاری) ====================
+# ==================== ایمپورت روش‌ها ====================
 METHODS = {}
 
 # --- روش ۱: curl_cffi ---
 try:
     from curl_cffi import requests as cffi_requests
     METHODS["curl_cffi"] = {
-        "name": "1️⃣ curl_cffi (TLS Impersonation)",
-        "available": True,
-        "error": None,
+        "name": "1️⃣ curl_cffi (TLS فقط)",
+        "available": True, "error": None,
         "install": "",
     }
-    logger.info("✅ curl_cffi loaded successfully")
+    logger.info("✅ curl_cffi loaded")
 except ImportError as e:
     cffi_requests = None
     METHODS["curl_cffi"] = {
         "name": "1️⃣ curl_cffi",
-        "available": False,
-        "error": str(e),
+        "available": False, "error": str(e),
         "install": "pip install curl-cffi",
     }
-    logger.warning("❌ curl_cffi not available: %s", e)
+    logger.warning("❌ curl_cffi: %s", e)
 
-# --- روش ۲: ai-cloudscraper (hybrid) ---
+# --- روش ۲: ai-cloudscraper (اگر نصب باشد) ---
 try:
     import cloudscraper as ai_cloudscraper
     METHODS["ai_cloudscraper"] = {
-        "name": "2️⃣ ai-cloudscraper (Hybrid + Playwright)",
-        "available": True,
-        "error": None,
+        "name": "2️⃣ ai-cloudscraper (Hybrid)",
+        "available": True, "error": None,
         "install": "",
     }
-    logger.info("✅ ai-cloudscraper loaded successfully")
+    logger.info("✅ ai-cloudscraper loaded")
 except ImportError as e:
     ai_cloudscraper = None
     METHODS["ai_cloudscraper"] = {
-        "name": "2️⃣ ai-cloudscraper (Hybrid)",
-        "available": False,
-        "error": str(e),
-        "install": "pip install ai-cloudscraper && playwright install chromium",
+        "name": "2️⃣ ai-cloudscraper",
+        "available": False, "error": str(e),
+        "install": "pip install ai-cloudscraper",
     }
-    logger.warning("❌ ai-cloudscraper not available: %s", e)
+    logger.warning("❌ ai-cloudscraper: %s", e)
 
-# --- روش ۳: cloudscraper-turnstile ---
+# --- روش ۳: cloudscraper25 ---
 try:
-    import cloudscraper_turnstile
-    METHODS["turnstile"] = {
-        "name": "3️⃣ cloudscraper-turnstile",
-        "available": True,
-        "error": None,
+    import cloudscraper25
+    METHODS["cloudscraper25"] = {
+        "name": "3️⃣ cloudscraper25 (Enhanced)",
+        "available": True, "error": None,
         "install": "",
     }
-    logger.info("✅ cloudscraper-turnstile loaded successfully")
+    logger.info("✅ cloudscraper25 loaded")
 except ImportError as e:
-    cloudscraper_turnstile = None
-    METHODS["turnstile"] = {
-        "name": "3️⃣ cloudscraper-turnstile",
-        "available": False,
-        "error": str(e),
-        "install": "pip install cloudscraper-turnstile + تنظیم PEAK_API_KEY",
+    cloudscraper25 = None
+    METHODS["cloudscraper25"] = {
+        "name": "3️⃣ cloudscraper25",
+        "available": False, "error": str(e),
+        "install": "pip install cloudscraper25",
     }
-    logger.warning("❌ cloudscraper-turnstile not available: %s", e)
+    logger.warning("❌ cloudscraper25: %s", e)
+
+# --- روش ۴: unblock_requests ---
+try:
+    from unblock_requests import CloudflareSession
+    METHODS["unblock_requests"] = {
+        "name": "4️⃣ unblock_requests (Fallback)",
+        "available": True, "error": None,
+        "install": "",
+    }
+    logger.info("✅ unblock_requests loaded")
+except ImportError as e:
+    CloudflareSession = None
+    METHODS["unblock_requests"] = {
+        "name": "4️⃣ unblock_requests",
+        "available": False, "error": str(e),
+        "install": "pip install unblock-requests",
+    }
+    logger.warning("❌ unblock_requests: %s", e)
+
+# --- روش ۵: nodriver ---
+try:
+    import nodriver as nd
+    METHODS["nodriver"] = {
+        "name": "5️⃣ nodriver (مرورگر واقعی)",
+        "available": True, "error": None,
+        "install": "",
+    }
+    logger.info("✅ nodriver loaded")
+except ImportError as e:
+    nd = None
+    METHODS["nodriver"] = {
+        "name": "5️⃣ nodriver",
+        "available": False, "error": str(e),
+        "install": "pip install nodriver + Chromium",
+    }
+    logger.warning("❌ nodriver: %s", e)
+
+# --- روش ۶: cloudflare-skip ---
+try:
+    from cloudflare_skip import get as cf_skip_get
+    METHODS["cloudflare_skip"] = {
+        "name": "6️⃣ cloudflare-skip (Hybrid + کش)",
+        "available": True, "error": None,
+        "install": "",
+    }
+    logger.info("✅ cloudflare-skip loaded")
+except ImportError as e:
+    cf_skip_get = None
+    METHODS["cloudflare_skip"] = {
+        "name": "6️⃣ cloudflare-skip",
+        "available": False, "error": str(e),
+        "install": "pip install cloudflare-skip nodriver + Chromium",
+    }
+    logger.warning("❌ cloudflare-skip: %s", e)
 
 
 # ==================== توابع کمکی ====================
 def is_valid_url(url: str) -> bool:
     try:
-        result = urlparse(url)
-        return all([result.scheme in ("http", "https"), result.netloc])
+        r = urlparse(url)
+        return all([r.scheme in ("http", "https"), r.netloc])
     except Exception:
         return False
 
 
-def get_filename_from_url(url: str, content_disposition: str | None = None) -> str:
-    if content_disposition:
-        fname = re.findall(
-            r'filename[^;=\n]*=(([\'"]).*?\2|[^;\n]*)', content_disposition
-        )
-        if fname:
-            filename = fname[0][0].strip("'\"")
-            return unquote(filename)
-
-    path = urlparse(url).path
-    filename = os.path.basename(path)
-    if filename:
-        return unquote(filename)
-    return "downloaded_file"
+def get_filename_from_url(url: str, cd: str | None = None) -> str:
+    if cd:
+        m = re.findall(r'filename[^;=\n]*=(([\'"]).*?\2|[^;\n]*)', cd)
+        if m:
+            return unquote(m[0][0].strip("'\""))
+    fn = os.path.basename(urlparse(url).path)
+    return unquote(fn) if fn else "downloaded_file"
 
 
 # ==================== هندلرها ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    available = [m["name"] for m in METHODS.values() if m["available"]]
+    avail = sum(1 for m in METHODS.values() if m["available"])
     await update.message.reply_text(
-        "سلام 👋\n\n"
-        "لینک فایل رو بفرست تا برات دانلود کنم.\n"
-        "بعد از ارسال لینک، می‌تونی روش دانلود رو انتخاب کنی.\n\n"
-        f"حداکثر حجم: ۴۵ مگابایت\n\n"
-        f"روش‌های فعلاً فعال: {len(available)} از {len(METHODS)}\n"
-        "برای دیدن وضعیت کامل: /methods"
+        f"سلام 👋\n\n"
+        f"لینک فایل رو بفرست تا دانلود کنم.\n"
+        f"بعد از لینک، از بین {avail} روش فعال انتخاب کن.\n\n"
+        f"برای وضعیت کامل: /methods"
     )
 
 
 async def methods_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = ["📋 <b>وضعیت روش‌های دانلود:</b>\n"]
-    for key, info in METHODS.items():
-        status = "✅" if info["available"] else "❌"
-        lines.append(f"{status} {info['name']}")
+    for info in METHODS.values():
+        icon = "✅" if info["available"] else "❌"
+        lines.append(f"{icon} {info['name']}")
         if not info["available"]:
-            lines.append(f"    <i>نصب: {info['install']}</i>")
-    lines.append("\n⚠️ نکته: پکیج‌های <code>ai-cloudscraper</code> و <code>cloudscraper-turnstile</code>")
-    lines.append("همزمان قابل نصب نیستند. برای تست هر روش، requirements.txt را تغییر بده.")
+            lines.append(f"    <i>{info['install']}</i>")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-    user_id = update.effective_user.id
+    uid = update.effective_user.id
 
     if not is_valid_url(url):
-        await update.message.reply_text(
-            "لطفاً یک لینک معتبر (http یا https) بفرست."
-        )
+        await update.message.reply_text("لینک معتبر (http/https) بفرست.")
         return
 
-    # پاک‌سازی فایل موقت قبلی این کاربر
-    if user_id in user_files:
+    if uid in user_files:
         try:
-            os.remove(user_files[user_id]["path"])
+            os.remove(user_files[uid]["path"])
         except Exception:
             pass
-        del user_files[user_id]
+        del user_files[uid]
 
-    pending_urls[user_id] = url
-    logger.info("URL received from user %s: %s", user_id, url)
+    pending_urls[uid] = url
+    logger.info("URL from user %s: %s", uid, url)
 
-    # ساخت کیبورد انتخاب روش
     keyboard = []
     for key, info in METHODS.items():
         if info["available"]:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"✅ {info['name']}",
-                    callback_data=f"dl_{key}",
-                )
-            ])
+            keyboard.append([InlineKeyboardButton(
+                f"✅ {info['name']}", callback_data=f"dl_{key}"
+            )])
         else:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"⛔ {info['name']} (نصب نیست)",
-                    callback_data=f"info_{key}",
-                )
-            ])
+            keyboard.append([InlineKeyboardButton(
+                f"⛔ {info['name']}", callback_data=f"info_{key}"
+            )])
     keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="cancel")])
 
-    short_url = url if len(url) <= 80 else url[:77] + "..."
     await update.message.reply_text(
-        f"🔗 لینک دریافت شد:\n<code>{short_url}</code>\n\n"
-        f"روش دانلود را انتخاب کن:",
+        f"🔗 لینک دریافت شد.\n\nروش دانلود را انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
     )
 
 
-async def do_download(url: str, user_id: int, edit_func, method_key: str):
-    """دانلود با روش انتخاب‌شده. edit_func یک تابع async برای ویرایش پیام است."""
+async def do_download(url: str, uid: int, edit_func, method_key: str):
     info = METHODS.get(method_key)
     if not info or not info["available"]:
-        await edit_func(f"❌ روش <code>{method_key}</code> در دسترس نیست.")
+        await edit_func(f"❌ روش <code>{method_key}</code> فعال نیست.")
         return
 
-    method_name = info["name"]
-
+    mname = info["name"]
     logger.info("=" * 60)
-    logger.info("DOWNLOAD START")
-    logger.info("  User ID  : %s", user_id)
-    logger.info("  Method   : %s (%s)", method_key, method_name)
-    logger.info("  URL      : %s", url)
+    logger.info("DOWNLOAD | User: %s | Method: %s (%s)", uid, method_key, mname)
+    logger.info("URL: %s", url)
     logger.info("=" * 60)
 
-    await edit_func(
-        f"⏳ در حال دانلود...\n\n"
-        f"روش: {method_name}",
-    )
+    await edit_func(f"⏳ در حال دانلود...\n\nروش: {mname}")
 
     headers = {
         "Accept": "*/*",
@@ -220,140 +237,130 @@ async def do_download(url: str, user_id: int, edit_func, method_key: str):
 
     response = None
     try:
-        # ============ ارسال درخواست بر اساس روش ============
+        # ==================== ارسال درخواست بر اساس روش ====================
         if method_key == "curl_cffi":
-            logger.info("[curl_cffi] Sending GET with impersonate='chrome'")
+            logger.info("[curl_cffi] GET with impersonate='chrome'")
             response = cffi_requests.get(
-                url,
-                impersonate="chrome",
-                stream=True,
-                timeout=40,
-                headers=headers,
-                allow_redirects=True,
+                url, impersonate="chrome", stream=True,
+                timeout=40, headers=headers, allow_redirects=True,
             )
 
         elif method_key == "ai_cloudscraper":
-            logger.info("[ai-cloudscraper] Creating hybrid scraper (Playwright fallback)")
+            logger.info("[ai-cloudscraper] create_scraper(interpreter='hybrid')")
             scraper = ai_cloudscraper.create_scraper(
-                debug=True,
-                interpreter="hybrid",
-                browser={
-                    "browser": "chrome",
-                    "platform": "windows",
-                    "desktop": True,
-                },
+                debug=True, interpreter="hybrid",
+                browser={"browser": "chrome", "platform": "windows", "desktop": True},
             )
-            logger.info("[ai-cloudscraper] Sending GET")
-            response = scraper.get(
-                url,
-                stream=True,
-                timeout=40,
-                headers=headers,
-                allow_redirects=True,
-            )
+            response = scraper.get(url, stream=True, timeout=40, headers=headers, allow_redirects=True)
 
-        elif method_key == "turnstile":
-            logger.info("[turnstile] Creating cloudscraper_turnstile scraper")
-            scraper = cloudscraper_turnstile.create_scraper()
-            logger.info("[turnstile] Sending GET")
-            response = scraper.get(
-                url,
-                stream=True,
-                timeout=40,
-                headers=headers,
-                allow_redirects=True,
+        elif method_key == "cloudscraper25":
+            logger.info("[cloudscraper25] create_scraper() with stealth")
+            scraper = cloudscraper25.create_scraper(
+                browser={"browser": "chrome", "platform": "windows", "desktop": True},
             )
+            response = scraper.get(url, stream=True, timeout=40, headers=headers, allow_redirects=True)
+
+        elif method_key == "unblock_requests":
+            logger.info("[unblock_requests] CloudflareSession(mode='curl_cffi')")
+            session = CloudflareSession()
+            response = session.get(url, stream=True, timeout=40, headers=headers, allow_redirects=True)
+
+        elif method_key == "nodriver":
+            logger.info("[nodriver] Starting real Chrome browser...")
+            driver = await nd.start()
+            try:
+                tab = await driver.get(url)
+                # ذخیره‌ی محتوای صفحه به عنوان فایل
+                content = await tab.get_content()
+                temp_dir = tempfile.gettempdir()
+                filename = get_filename_from_url(url) or "nodriver_download.bin"
+                file_path = os.path.join(temp_dir, f"{uid}_nodriver_{filename}")
+                with open(file_path, "wb") as f:
+                    f.write(content.encode("utf-8"))
+                user_files[uid] = {"path": file_path, "filename": filename, "method": mname}
+                size_kb = os.path.getsize(file_path) / 1024
+                logger.info("[nodriver] Content saved: %s bytes", os.path.getsize(file_path))
+                keyboard = [[InlineKeyboardButton("✅ آپلود", callback_data="upload"),
+                             InlineKeyboardButton("❌ لغو", callback_data="cancel")]]
+                await edit_func(
+                    f"✅ محتوا دریافت شد (روش nodriver)\n"
+                    f"نام: <code>{filename}</code>\n"
+                    f"حجم: {size_kb:.1f} KB\n\n"
+                    f"آپلود شود؟",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                )
+                return
+            finally:
+                try:
+                    driver.stop()
+                except Exception:
+                    pass
+
+        elif method_key == "cloudflare_skip":
+            logger.info("[cloudflare-skip] Using curl_cffi + nodriver hybrid with cache")
+            response = cf_skip_get(url, stream=True, timeout=40, headers=headers)
+
         else:
             raise RuntimeError(f"Unknown method: {method_key}")
 
-        # ============ تحلیل پاسخ ============
-        status_code = response.status_code
+        # ==================== تحلیل پاسخ ====================
+        status = response.status_code
         reason = getattr(response, "reason", "N/A")
         final_url = getattr(response, "url", url)
         resp_headers = dict(response.headers)
         cf_mitigated = resp_headers.get("Cf-Mitigated", "").lower()
 
-        logger.info("[%s] Status    : %s %s", method_key, status_code, reason)
-        logger.info("[%s] Final URL : %s", method_key, final_url)
+        logger.info("[%s] Status: %s %s", method_key, status, reason)
+        logger.info("[%s] Final URL: %s", method_key, final_url)
         logger.info("[%s] Cf-Mitigated: %s", method_key, cf_mitigated or "none")
-        logger.info("[%s] Response Headers: %s", method_key, resp_headers)
+        logger.info("[%s] Headers: %s", method_key, resp_headers)
 
-        # ============ خطا ============
-        if status_code >= 400:
+        if status >= 400:
             body_snippet = ""
             try:
                 body_snippet = response.text[:500]
-            except Exception as e:
-                logger.warning("[%s] Could not read body: %s", method_key, e)
-
+            except Exception:
+                pass
             logger.error(
-                "[%s] DOWNLOAD FAILED\n"
-                "  Status        : %s\n"
-                "  Reason        : %s\n"
-                "  Final URL     : %s\n"
-                "  Cf-Mitigated  : %s\n"
-                "  Body snippet  : %s",
-                method_key,
-                status_code,
-                reason,
-                final_url,
-                cf_mitigated or "none",
-                body_snippet[:300],
+                "[%s] FAILED | Status=%s | Reason=%s | Cf-Mitigated=%s | Body=%s",
+                method_key, status, reason, cf_mitigated or "none", body_snippet[:300],
             )
-
             hint = ""
             if cf_mitigated == "challenge":
-                hint = (
-                    "\n\n💡 سرور صفحه‌ی چالش Cloudflare فرستاده "
-                    "(Cf-Mitigated: challenge). این روش نتوانست آن را حل کند."
-                )
-
+                hint = "\n\n💡 هنوز صفحه‌ی چالش کلادفلر برگشته."
             await edit_func(
-                f"❌ خطا در دانلود\n\n"
-                f"روش: {method_name}\n"
-                f"کد: <code>{status_code}</code>\n"
+                f"❌ خطا (روش: {mname})\n"
+                f"کد: <code>{status}</code>\n"
                 f"دلیل: {reason}\n"
                 f"Cf-Mitigated: <code>{cf_mitigated or 'none'}</code>"
-                f"{hint}\n\n"
-                f"جزئیات کامل در لاگ ثبت شد.",
+                f"{hint}\n\nجزئیات در لاگ.",
                 parse_mode="HTML",
             )
             return
 
-        # ============ بررسی حجم (Content-Length) ============
-        content_length = resp_headers.get("content-length")
-        if content_length:
+        # ==================== حجم و نام فایل ====================
+        cl = resp_headers.get("content-length")
+        if cl:
             try:
-                size = int(content_length)
-                if size > MAX_FILE_SIZE:
-                    logger.warning(
-                        "[%s] File too large: %.2f MB", method_key, size / 1024 / 1024
-                    )
-                    await edit_func(
-                        f"حجم فایل ({size / 1024 / 1024:.1f} MB) بیش از حد مجاز است."
-                    )
+                if int(cl) > MAX_FILE_SIZE:
+                    logger.warning("[%s] Too large (CL): %s", method_key, cl)
+                    await edit_func("حجم فایل بیش از ۴۵ مگابایت است.")
                     return
             except ValueError:
                 pass
 
-        # ============ تعیین نام فایل ============
         filename = get_filename_from_url(url, resp_headers.get("content-disposition"))
         if "." not in filename:
             ct = resp_headers.get("content-type", "")
-            if "video" in ct:
-                filename += ".mp4"
-            elif "image" in ct:
-                filename += ".jpg"
-            else:
-                filename += ".bin"
+            filename += ".mp4" if "video" in ct else ".jpg" if "image" in ct else ".bin"
         logger.info("[%s] Filename: %s", method_key, filename)
 
-        # ============ ذخیره‌سازی ============
+        # ==================== ذخیره‌سازی ====================
         temp_dir = tempfile.gettempdir()
-        file_path = os.path.join(temp_dir, f"{user_id}_{filename}")
-        logger.info("[%s] Saving to: %s", method_key, file_path)
-
+        file_path = os.path.join(temp_dir, f"{uid}_{method_key}_{filename}")
         downloaded = 0
+
         with open(file_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
@@ -361,54 +368,32 @@ async def do_download(url: str, user_id: int, edit_func, method_key: str):
                     downloaded += len(chunk)
                     if downloaded > MAX_FILE_SIZE:
                         os.remove(file_path)
-                        logger.warning(
-                            "[%s] Exceeded size during download at %s bytes",
-                            method_key,
-                            downloaded,
-                        )
-                        await edit_func("حجم فایل بیش از حد مجاز شد.")
+                        logger.warning("[%s] Size exceeded at %s bytes", method_key, downloaded)
+                        await edit_func("حجم فایل از حد مجاز بیشتر شد.")
                         return
 
-        logger.info(
-            "[%s] Download complete: %s bytes (%.2f MB)",
-            method_key,
-            downloaded,
-            downloaded / 1024 / 1024,
-        )
+        logger.info("[%s] SUCCESS: %s bytes (%.2f MB)", method_key, downloaded, downloaded / 1024 / 1024)
 
-        user_files[user_id] = {
-            "path": file_path,
-            "filename": filename,
-            "method": method_name,
-        }
-
-        keyboard = [[
-            InlineKeyboardButton("✅ آپلود کن", callback_data="upload"),
-            InlineKeyboardButton("❌ لغو", callback_data="cancel"),
-        ]]
-
+        user_files[uid] = {"path": file_path, "filename": filename, "method": mname}
+        keyboard = [[InlineKeyboardButton("✅ آپلود", callback_data="upload"),
+                     InlineKeyboardButton("❌ لغو", callback_data="cancel")]]
         size_mb = os.path.getsize(file_path) / (1024 * 1024)
         await edit_func(
             f"✅ دانلود موفق!\n\n"
-            f"روش: {method_name}\n"
+            f"روش: {mname}\n"
             f"نام: <code>{filename}</code>\n"
-            f"حجم: {size_mb:.2f} مگابایت\n\n"
-            f"می‌خوای برات آپلود کنم؟",
+            f"حجم: {size_mb:.2f} MB\n\nآپلود شود؟",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
 
     except Exception as e:
-        logger.exception(
-            "[%s] EXCEPTION during download for URL: %s", method_key, url
-        )
+        logger.exception("[%s] EXCEPTION | URL=%s", method_key, url)
         await edit_func(
-            f"❌ خطا (روش: {method_name})\n\n"
-            f"<code>{type(e).__name__}</code>: {str(e)[:200]}\n\n"
-            f"جزئیات در لاگ ثبت شد.",
+            f"❌ خطا (روش: {mname})\n\n"
+            f"<code>{type(e).__name__}</code>: {str(e)[:200]}",
             parse_mode="HTML",
         )
-
     finally:
         if response is not None:
             try:
@@ -418,111 +403,80 @@ async def do_download(url: str, user_id: int, edit_func, method_key: str):
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    data = q.data
 
-    user_id = query.from_user.id
-    data = query.data
-
-    # --- اطلاعات روش غیرفعال ---
     if data.startswith("info_"):
-        key = data[len("info_"):]
+        key = data[5:]
         info = METHODS.get(key)
         if info:
-            await query.answer(
-                f"این روش نصب نیست.\n\nنصب:\n{info['install']}",
-                show_alert=True,
-            )
+            await q.answer(f"نصب:\n{info['install']}", show_alert=True)
         return
 
-    # --- لغو ---
     if data == "cancel":
-        if user_id in user_files:
+        if uid in user_files:
             try:
-                os.remove(user_files[user_id]["path"])
+                os.remove(user_files[uid]["path"])
             except Exception:
                 pass
-            del user_files[user_id]
-        if user_id in pending_urls:
-            del pending_urls[user_id]
-        await query.edit_message_text("❌ عملیات لغو شد.")
+            del user_files[uid]
+        pending_urls.pop(uid, None)
+        await q.edit_message_text("❌ لغو شد.")
         return
 
-    # --- انتخاب روش دانلود ---
     if data.startswith("dl_"):
-        method_key = data[len("dl_"):]
-        url = pending_urls.pop(user_id, None)
+        method_key = data[3:]
+        url = pending_urls.pop(uid, None)
         if not url:
-            await query.edit_message_text(
-                "لینک منقضی شده یا پیدا نشد. دوباره لینک بفرست."
-            )
+            await q.edit_message_text("لینک منقضی شده. دوباره بفرست.")
             return
 
-        async def edit_func(text, **kwargs):
-            return await query.edit_message_text(text, **kwargs)
+        async def edit_func(text, **kw):
+            return await q.edit_message_text(text, **kw)
 
-        await do_download(url, user_id, edit_func, method_key)
+        await do_download(url, uid, edit_func, method_key)
         return
 
-    # --- آپلود ---
     if data == "upload":
-        if user_id not in user_files:
-            await query.edit_message_text("فایلی برای آپلود پیدا نشد. دوباره لینک بفرست.")
+        if uid not in user_files:
+            await q.edit_message_text("فایلی پیدا نشد.")
             return
-
-        file_info = user_files[user_id]
-        file_path = file_info["path"]
-        filename = file_info["filename"]
-        method_name = file_info.get("method", "?")
-
+        fi = user_files[uid]
         try:
-            await query.edit_message_text("در حال آپلود فایل... ⏳")
-            logger.info("Uploading file for user %s: %s (%s)", user_id, filename, method_name)
-
-            with open(file_path, "rb") as f:
+            await q.edit_message_text("در حال آپلود... ⏳")
+            with open(fi["path"], "rb") as f:
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=q.message.chat_id,
                     document=f,
-                    filename=filename,
-                    caption=(
-                        f"✅ فایل آپلود شد\n\n"
-                        f"نام: {filename}\n"
-                        f"روش دانلود: {method_name}"
-                    ),
+                    filename=fi["filename"],
+                    caption=f"✅ آپلود شد\nنام: {fi['filename']}\nروش: {fi.get('method','?')}",
                 )
-
-            await query.edit_message_text("✅ فایل با موفقیت آپلود شد.")
-            logger.info("Upload successful for user %s", user_id)
-
+            await q.edit_message_text("✅ آپلود موفق.")
         except Exception as e:
-            logger.exception("Error while uploading file:")
-            await query.edit_message_text(
-                f"❌ خطا در آپلود فایل:\n<code>{str(e)[:200]}</code>",
-                parse_mode="HTML",
-            )
-
+            logger.exception("Upload error:")
+            await q.edit_message_text(f"❌ خطا در آپلود:\n<code>{str(e)[:200]}</code>", parse_mode="HTML")
         finally:
             try:
-                os.remove(file_path)
+                os.remove(fi["path"])
             except Exception:
                 pass
-            if user_id in user_files:
-                del user_files[user_id]
+            user_files.pop(uid, None)
 
 
-# ==================== اجرای ربات ====================
+# ==================== اجرا ====================
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("methods", methods_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("methods", methods_cmd))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
-    application.add_handler(CallbackQueryHandler(button_handler))
-
-    logger.info("Bot started. Available methods: %s",
-                [k for k, v in METHODS.items() if v["available"]])
-    print("ربات شروع به کار کرد...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    avail = [k for k, v in METHODS.items() if v["available"]]
+    logger.info("Bot started. Available methods: %s", avail)
+    print(f"ربات شروع شد. روش‌های فعال: {len(avail)}")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
