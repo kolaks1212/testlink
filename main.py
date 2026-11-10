@@ -1,3 +1,11 @@
+import os
+import tempfile
+import logging
+import requests
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
+from telegram.ext import ContextTypes
+
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.effective_user.id
