@@ -106,13 +106,45 @@ class ApifyManager:
         items = []
         async for item in self.client.dataset(dataset_id).iterate_items():
             items.append(item)
-
-        success = [i for i in items if i.get("status") == "success" or i.get("success") is True]
+    
+        def is_success(i):
+            if not isinstance(i, dict):
+                i = dict(i) if hasattr(i, "__dict__") else {}
+            status = str(i.get("status") or i.get("state") or "").lower()
+            if status in ("success", "succeeded", "ok", "downloaded"):
+                return True
+            if i.get("success") is True:
+                return True
+            if i.get("error") or i.get("errorMessage") or i.get("failReason"):
+                return False
+            # If has a file size / path and no error → success
+            if (i.get("size") or i.get("fileSize") or i.get("path") or i.get("filename")) and not i.get("error"):
+                return True
+            return False
+    
+        success = [i for i in items if is_success(i)]
         failed = [i for i in items if i not in success]
-
+    
+        # Extract short failure reasons for user
+        reasons = []
+        for i in failed[:5]:
+            if not isinstance(i, dict):
+                continue
+            reason = (
+                i.get("error")
+                or i.get("errorMessage")
+                or i.get("failReason")
+                or i.get("message")
+                or i.get("status")
+                or "unknown"
+            )
+            url = i.get("url") or i.get("sourceUrl") or i.get("input") or ""
+            reasons.append(f"• {url[:60]} → {reason}")
+    
         return {
             "total": len(items),
             "success": len(success),
             "failed": len(failed),
-            "items": items[:20],  # only first 20 for preview
+            "items": items[:20],
+            "reasons": reasons,
         }
