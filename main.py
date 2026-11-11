@@ -161,9 +161,8 @@ async def monitor_and_send(
     message_id: int,
     url_count: int,
 ):
-    """Wait for the Actor, then try to send the ZIP file to the user."""
+    """Wait for the Actor, then send file links / small files to the user."""
     try:
-        # Wait for finish
         run = await apify.wait_for_run(run_id, timeout_secs=1800)
         status = get_attr(run, "status")
 
@@ -179,99 +178,127 @@ async def monitor_and_send(
         dataset_id = get_attr(run, "default_dataset_id") or get_attr(run, "defaultDatasetId")
         store_id = get_attr(run, "default_key_value_store_id") or get_attr(run, "defaultKeyValueStoreId")
 
-        # Update status
         await context.bot.edit_message_text(
             chat_id=user_id,
             message_id=message_id,
-            text=(
-                f"✅ پردازش تمام شد!\n\n"
-                f"در حال آماده‌سازی فایل ZIP برای ارسال..."
-            ),
+            text="✅ پردازش تمام شد!\n\nدر حال آماده‌سازی نتیجه...",
         )
 
-        # Prepare local path
+        summary = await apify.get_dataset_summary(dataset_id)
+        file_links = summary.get("file_links") or []
+
+        # 1) Try ZIP if exists
         await ensure_temp_dir()
         local_zip = os.path.join(TEMP_DIR, f"{run_id}.zip")
-
-        # Try to download ZIP
-        zip_path = await apify.download_zip_from_store(store_id, local_zip)
+        zip_path = await apify.download_zip_from_store(store_id, local_zip) if store_id else None
 
         if zip_path and os.path.exists(zip_path):
             file_size_mb = os.path.getsize(zip_path) / (1024 * 1024)
-
-            if file_size_mb > MAX_FILE_SIZE_MB:
-                # File too big for Telegram
-                await context.bot.edit_message_text(
-                    chat_id=user_id,
-                    message_id=message_id,
-                    text=(
-                        f"✅ دانلود کامل شد اما حجم فایل ({file_size_mb:.1f} MB) "
-                        f"بیشتر از محدودیت تلگرام ({MAX_FILE_SIZE_MB} MB) است.\n\n"
-                        f"🆔 Run ID: `{run_id}`\n"
-                        f"📦 Dataset: `{dataset_id}`\n"
-                        f"🗂 Store: `{store_id}`\n\n"
-                        f"لطفاً از کنسول Apify فایل را دانلود کن."
-                    ),
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-            else:
-                # Send the ZIP file
-                await context.bot.edit_message_text(
-                    chat_id=user_id,
-                    message_id=message_id,
-                    text=f"📤 در حال ارسال فایل ZIP ({file_size_mb:.1f} MB)...",
-                )
-
+            if file_size_mb <= MAX_FILE_SIZE_MB:
                 with open(zip_path, "rb") as f:
                     await context.bot.send_document(
                         chat_id=user_id,
                         document=InputFile(f, filename=f"download_{run_id[:8]}.zip"),
                         caption=(
                             f"✅ دانلود کامل شد!\n"
-                            f"تعداد URL: {url_count}\n"
+                            f"موفق: {summary['success']} / {summary['total']}\n"
                             f"حجم: {file_size_mb:.1f} MB\n"
                             f"Run ID: `{run_id}`"
                         ),
                         parse_mode=ParseMode.MARKDOWN,
                     )
-
-                # Clean up status message
                 try:
                     await context.bot.delete_message(chat_id=user_id, message_id=message_id)
                 except Exception:
                     pass
+                try:
+                    os.remove(zip_path)
+                except Exception:
+                    pass
+                return
+            else:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"⚠️ ZIP خیلی بزرگ است ({file_size_mb:.1f} MB).\n"
+                        f"لینک‌های فایل‌ها را جداگانه می‌فرستم."
+                    ),
+                )
 
-        else:
-            # No ZIP found – send summary instead
-            summary = await apify.get_dataset_summary(dataset_id)
+        # 2) Send summary + links
+        reasons_text = ""
+        if summary.get("reasons"):
+            reasons_text = "\n\nعلت خطاها:\n" + "\n".join(summary["reasons"])
 
-            reasons_text = ""
-            if summary.get("reasons"):
-                reasons_text = "\n\nعلت خطاها:\n" + "\n".join(summary["reasons"])
+        links_text = ""
+        if file_links:
+            lines = []
+            for i, fl in enumerate(file_links[:15], 1):
+                name = str(fl.get("name") or "file")[:40]
+                url = fl.get("url") or ""
+                lines.append(f"{i}. [{name}]({url})")
+            links_text = "\n\n📥 لینک دانلود:\n" + "\n".join(lines)
+            if len(file_links) > 15:
+                links_text += f"\n... و {len(file_links) - 15} فایل دیگر"
 
-            await context.bot.edit_message_text(
-                chat_id=user_id,
-                message_id=message_id,
-                text=(
-                    f"✅ پردازش تمام شد اما فایل ZIP پیدا نشد.\n\n"
-                    f"📊 خلاصه:\n"
-                    f"• کل: {summary['total']}\n"
-                    f"• موفق: {summary['success']}\n"
-                    f"• ناموفق: {summary['failed']}"
-                    f"{reasons_text}\n\n"
-                    f"🆔 Run ID: `{run_id}`\n"
-                    f"📦 Dataset: `{dataset_id}`\n"
-                    f"🗂 Store: `{store_id}`"
-                ),
-                parse_mode=ParseMode.MARKDOWN,
-            )
+        await context.bot.edit_message_text(
+            chat_id=user_id,
+            message_id=message_id,
+            text=(
+                f"✅ پردازش تمام شد.\n\n"
+                f"📊 خلاصه:\n"
+                f"• کل: {summary['total']}\n"
+                f"• موفق: {summary['success']}\n"
+                f"• ناموفق: {summary['failed']}"
+                f"{reasons_text}"
+                f"{links_text}\n\n"
+                f"🆔 Run ID: `{run_id}`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        )
 
-        # Cleanup temp file
-        if os.path.exists(local_zip):
+        # 3) Try to send small successful files as Telegram documents (max 3)
+        sent = 0
+        for fl in file_links[:3]:
+            url = fl.get("url")
+            if not url:
+                continue
+            name = str(fl.get("name") or "file")
+            # sanitize filename
+            safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in name)[:80]
+            local_path = os.path.join(TEMP_DIR, f"{run_id}_{safe_name}")
+            path = await apify.download_file_from_url(url, local_path)
+            if not path or not os.path.exists(path):
+                continue
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+            if size_mb > MAX_FILE_SIZE_MB:
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+                continue
             try:
-                os.remove(local_zip)
-            except Exception:
-                pass
+                with open(path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=user_id,
+                        document=InputFile(f, filename=safe_name),
+                        caption=f"📎 {safe_name} ({size_mb:.1f} MB)",
+                    )
+                sent += 1
+            except Exception as e:
+                logger.warning(f"Failed to send file {safe_name}: {e}")
+            finally:
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+
+        if sent:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"📤 {sent} فایل کوچک هم مستقیماً ارسال شد.",
+            )
 
     except Exception as e:
         logger.exception(f"Error in monitor_and_send for run {run_id}")
@@ -283,6 +310,7 @@ async def monitor_and_send(
             )
         except Exception:
             pass
+
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
