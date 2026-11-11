@@ -167,10 +167,12 @@ async def monitor_and_send(
         status = get_attr(run, "status")
 
         if status != "SUCCEEDED":
+            status_msg_text = get_attr(run, "statusMessage") or get_attr(run, "status_message") or ""
+            extra = f"\n{status_msg_text}" if status_msg_text else ""
             await context.bot.edit_message_text(
                 chat_id=user_id,
                 message_id=message_id,
-                text=f"❌ اجرا با وضعیت `{status}` تمام شد.",
+                text=f"❌ اجرا با وضعیت `{status}` تمام شد.{extra}",
                 parse_mode=ParseMode.MARKDOWN,
             )
             return
@@ -184,8 +186,19 @@ async def monitor_and_send(
             text="✅ پردازش تمام شد!\n\nدر حال آماده‌سازی نتیجه...",
         )
 
-        summary = await apify.get_dataset_summary(dataset_id)
+        summary = await apify.get_dataset_summary(dataset_id) if dataset_id else {
+            "total": 0, "success": 0, "failed": 0, "reasons": [], "file_links": []
+        }
         file_links = summary.get("file_links") or []
+
+        # Fallback: this Actor mainly stores files in Key-Value Store
+        if store_id and not file_links:
+            store_files = await apify.list_store_files(store_id)
+            if store_files:
+                file_links = store_files
+                summary["success"] = len(store_files)
+                summary["total"] = max(summary.get("total") or 0, len(store_files))
+                logger.info(f"Found {len(store_files)} files in KV store")
 
         # 1) Try ZIP if exists
         await ensure_temp_dir()

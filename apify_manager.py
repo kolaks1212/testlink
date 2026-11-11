@@ -26,7 +26,17 @@ class ApifyManager:
         images_only: bool = False,
     ):
         """Start dz_omar/universal-downloader with optional Residential proxy."""
-        url_items = [{"url": u, "method": "GET"} for u in urls[:max_files]]
+        default_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        url_items = [
+            {"url": u, "method": "GET", "headers": default_headers}
+            for u in urls[:max_files]
+        ]
 
         proxy_config = {"useApifyProxy": False}
         if USE_RESIDENTIAL_PROXY:
@@ -37,10 +47,12 @@ class ApifyManager:
             if PROXY_COUNTRY:
                 proxy_config["apifyProxyCountry"] = PROXY_COUNTRY
 
+        # Actor docs use proxyConfig; some builds accept proxyConfiguration too
         run_input = {
             "URLItem": url_items,
             "uniqueFileNames": True,
             "proxyConfig": proxy_config,
+            "proxyConfiguration": proxy_config,
         }
 
         run = await self.client.actor(ACTOR_ID).start(run_input=run_input)
@@ -121,6 +133,34 @@ class ApifyManager:
             "reasons": reasons,
             "file_links": file_links,
         }
+
+
+    async def list_store_files(self, store_id: str) -> list[dict]:
+        """List downloaded files from Key-Value Store (skip INPUT etc.)."""
+        skip_keys = {"INPUT", "OUTPUT", "input", "output", "README"}
+        files = []
+        try:
+            keys_result = await self.client.key_value_store(store_id).list_keys()
+            items = (
+                getattr(keys_result, "items", None)
+                or (keys_result.get("items") if isinstance(keys_result, dict) else [])
+                or []
+            )
+            for item in items:
+                key = getattr(item, "key", None) or (item.get("key") if isinstance(item, dict) else "") or ""
+                if not key or key in skip_keys:
+                    continue
+                size = getattr(item, "size", None) or (item.get("size") if isinstance(item, dict) else 0) or 0
+                # Public record URL (works if store is public or with token)
+                public_url = f"https://api.apify.com/v2/key-value-stores/{store_id}/records/{key}"
+                files.append({
+                    "name": key,
+                    "url": public_url,
+                    "size": size,
+                })
+        except Exception as e:
+            logger.error(f"list_store_files error: {e}")
+        return files
 
     async def download_file_from_url(self, url: str, local_path: str):
         try:
